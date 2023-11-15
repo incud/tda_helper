@@ -2,9 +2,6 @@ import itertools
 from functools import reduce 
 import math
 import numpy as np
-import pandas as pd
-import sympy as sp
-import networkx as nx
 
 
 def missing_vertex(clique, face):
@@ -71,12 +68,15 @@ def hilbert_laplacian_op(k, abs):
     """
     Generate the function $\Delta_k: \mathcal{C}_k \to \mathcal{C}_{k}$.
     """
-    if k == -1:
-        B0 = hilbert_boundary_op(0, abs)
-        B0_dag = B0.conj().T
-        return B0 @ B0_dag
+    assert k >= 0, "Cannot have negative Laplacians"
+
+    # Equation (8) in https://arxiv.org/pdf/2108.06547.pdf
+    if k == 0:
+        B1 = hilbert_boundary_op(1, abs)
+        B1_dag = B1.conj().T
+        return B1 @ B1_dag
         
-    # L_k = B_k^dag B_k + B_(k+1) B_(k+1)^dag
+    # Equation (6) in https://arxiv.org/pdf/2108.06547.pdf
     assert k < len(abs[0]) - 1, "The order 'k' must be lower than the number of 0-simplices minus one"
     Bk = hilbert_boundary_op(k, abs)
     BK_dag = Bk.conj().T
@@ -96,3 +96,52 @@ def test():
     L0 = hilbert_laplacian_op(0, triangle)
     L1 = hilbert_laplacian_op(1, triangle)
     eigvals, eigvecs = np.linalg.eigh(L0)
+
+def generate_clique_complex(G):
+    list_cliques = list(nx.enumerate_all_cliques(G))
+    abs = {size-1: list(filter(lambda k: len(k) == size, list_cliques)) for size in range(1, len(G.nodes)+1)}
+    return abs
+
+
+square = {
+    0: [[0], [1], [2], [3]],
+    1: [[0, 1], [1, 2], [2, 3], [0, 3]],
+    2: []
+}
+
+np.set_printoptions(precision=3, suppress=True)
+
+L0 = hilbert_laplacian_op(0, square)
+L1 = hilbert_laplacian_op(1, square)
+print("Eigenvalues L0:", np.linalg.eigh(L0)[0])
+print("Eigenvalues L1:", np.linalg.eigh(L1)[0])
+B1 = hilbert_boundary_op(1, square)
+print(f"Boundary_1:\n{B1}")
+print(f"Boundary_2:\n{hilbert_boundary_op(2, square)}")
+print(f"L_1:\n{hilbert_laplacian_op(1, square)}")
+print(f"B1B1:\n{B1.T @ B1}")
+
+import sympy
+import functools
+
+def cycles(k, abs):
+    partial_k = hilbert_boundary_op(k, abs)
+    m = sympy.Matrix(partial_k).nullspace()
+    if len(m) > 0:
+        m = functools.reduce(lambda a, b: a.row_join(b), m)
+        return np.array(m, dtype=int)
+    else:
+        return np.array([])
+
+def boundaries(k, abs):
+    partial_k_plus_1 = hilbert_boundary_op(k+1, abs)
+    if partial_k_plus_1.size > 0 and not np.all(np.isclose(partial_k_plus_1, 0)):
+        m = sympy.Matrix(partial_k_plus_1).columnspace()
+        m = functools.reduce(lambda a, b: a.row_join(b), m)
+        return np.array(m, dtype=int)
+    else:
+        return np.array([])
+    
+print(f"Cycles L1:\n{cycles(1, square)}")
+print(f"Boundaries L1:\n{boundaries(1, square)}")
+
